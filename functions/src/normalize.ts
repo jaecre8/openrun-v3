@@ -175,6 +175,8 @@ const SOURCE_CATEGORY: Record<string, Category> = {
   "음식": "food", "식품": "food",
   "상품권": "coupon", "상품권/쿠폰": "coupon",
   "의류": "fashion", "의류/잡화": "fashion", "화장품": "fashion",
+  // Ppomppu list categories
+  "식품/건강": "food", "컴퓨터": "digital", "가전/가구": "digital",
 };
 
 const KEYWORDS: [Category, string[]][] = [
