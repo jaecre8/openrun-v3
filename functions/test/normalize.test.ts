@@ -35,6 +35,7 @@ Deno.test("foreign currencies", () => {
   assertEquals(price("[Amazon] AirPods Pro 3 (149불/미국내free)", "ppomppu_global")[0], 149);
   assertEquals(price("[amazon.jp] 모니터 (jpy 17,984 / 직배, 무배)", "ppomppu_global"), [17984, "JPY", 0]);
   assertEquals(price("[일본아마존] 에버미디어 GC553G2 (17000엔/1620엔)", "ruliweb"), [17000, "JPY", 1620]);
+  assertEquals(price("[아마존재팬] mac mini m6 16gb ram 256gb ssd(144504yen, fs)", "ppomppu_global")[0], 144504);
 });
 
 Deno.test("free items", () => {
@@ -54,6 +55,7 @@ Deno.test("product name drops shop tag and price, keeps model numbers", () => {
   assertEquals(productName("[플레이샵] PS5 인왕 컬렉션 / 25,800원 / 무배"), "PS5 인왕 컬렉션");
   assertEquals(productName("[하이마트] 앤커 파워뱅크 87와트 A1118 43,610원/무배"), "앤커 파워뱅크 87와트 A1118");
   assertEquals(productName("에어팟 프로 3"), "에어팟 프로 3");
+  assertEquals(productName("[아마존재팬] mac mini m6 16gb ram 256gb ssd(144504yen, fs)"), "mac mini m6 16gb ram 256gb ssd");
   assertEquals(productName("[옥션] WD 외장하드 5TB 253,040"), "WD 외장하드 5TB");
 });
 

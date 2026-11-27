@@ -82,7 +82,7 @@ function explicitCandidates(text: string): Candidate[] {
   push(/\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)/, "USD", (m) => num(m[1]));
   push(/(?<![\d.,])(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:\$|달러|불|usd)/i, "USD", (m) => num(m[1]));
   push(/(?:jpy|¥)\s*(\d+(?:,\d{3})*)/i, "JPY", (m) => num(m[1]));
-  push(/(?<![\d.,])(\d+(?:,\d{3})*)\s*(?:엔|jpy)/i, "JPY", (m) => num(m[1]));
+  push(/(?<![\d.,])(\d+(?:,\d{3})*)\s*(?:엔|jpy|yen)/i, "JPY", (m) => num(m[1]));
   push(/(?:€|eur)\s*(\d+(?:,\d{3})*(?:\.\d+)?)/i, "EUR", (m) => num(m[1]));
   push(/(?<![\d.,])(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:유로|eur)/i, "EUR", (m) => num(m[1]));
   push(/(?<![\d.,])(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:위안|cny|yuan)/i, "CNY", (m) => num(m[1]));
@@ -153,7 +153,7 @@ export function parsePrice(post: Pick<RawPost, "title" | "source" | "priceText" 
 export function productName(title: string): string {
   let s = title;
   while (LEADING_TAG.test(s)) s = s.replace(LEADING_TAG, "");
-  const priceGroup = /\s*[([][^()[\]]*(?:\d\s*원|원\)|무료|무배|\$|달러|불|엔|jpy|free|배송|\d[\d,]*\]?$)[^()[\]]*(?:[)\]]|$)\s*$/i;
+  const priceGroup = /\s*[([][^()[\]]*(?:\d\s*원|원\)|무료|무배|\$|달러|불|엔|jpy|yen|free|배송|\d[\d,]*\]?$)[^()[\]]*(?:[)\]]|$)\s*$/i;
   const slashPrice = /\s*\/\s*[^/]*(?:\d\s*원|무배|무료)[^/]*$/;
   // Only strip a trailing number that is clearly a price, never a model number ("A1118", "Pro 3").
   const tailPrice =
