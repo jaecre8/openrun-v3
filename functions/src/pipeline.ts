@@ -1,5 +1,6 @@
 import { DocumentData, FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
 import type { Messaging } from "firebase-admin/messaging";
+import { dealChanges, DealState, stateOf } from "./changes";
 import { assignGroup, shopPriceKey } from "./group";
 import { inQuietHours, matchDeals, Notification, notificationText } from "./match";
 import { normalize } from "./normalize";
@@ -29,11 +30,31 @@ export interface CrawlStats {
   perSource: Record<string, number | string>;
   fresh: number;
   updated: number;
+  reads: number;
   notified: number;
   pushed: number;
 }
 
-export async function runCrawl(db: Firestore, messaging: Messaging, now = new Date()): Promise<CrawlStats> {
+/** How long alert rules read from Firestore are reused by a long-running process. */
+const RULES_TTL_MS = 3 * 60 * 1000;
+
+/**
+ * State kept between runs by a long-running process (the standalone runner),
+ * so each 2-minute cycle reads only posts it has not seen yet.
+ * A fresh cache per run (Cloud Functions) behaves exactly like no cache.
+ */
+export class CrawlCache {
+  deals = new Map<string, DealState>();
+  rules: { at: number; rules: AlertRule[] } | null = null;
+  hasAnyDeal = false;
+}
+
+export async function runCrawl(
+  db: Firestore,
+  messaging: Messaging,
+  now = new Date(),
+  cache = new CrawlCache(),
+): Promise<CrawlStats> {
   const results: CrawlResult[] = await crawlAll();
   const perSource: Record<string, number | string> = {};
   for (const r of results) perSource[r.source] = r.error ?? r.posts.length;
@@ -41,12 +62,28 @@ export async function runCrawl(db: Firestore, messaging: Messaging, now = new Da
   // A board can list the same post twice (pinned + regular row).
   const byId = new Map(results.flatMap((r) => r.posts).map((p) => normalize(p, now)).map((d) => [d.id, d]));
   const deals = [...byId.values()];
-  if (deals.length === 0) return { perSource, fresh: 0, updated: 0, notified: 0, pushed: 0 };
+  if (deals.length === 0) return { perSource, fresh: 0, updated: 0, reads: 0, notified: 0, pushed: 0 };
 
   const col = db.collection("deals");
-  const snaps = await db.getAll(...deals.map((d) => col.doc(d.id)));
-  const existing = new Map(snaps.filter((s) => s.exists).map((s) => [s.id, s.data()!]));
-  const bootstrap = existing.size === 0 && (await col.limit(1).get()).empty;
+  const existing = new Map<string, DealState>();
+  const unknown = deals.filter((d) => {
+    const cached = cache.deals.get(d.id);
+    if (cached) existing.set(d.id, cached);
+    return !cached;
+  });
+  let reads = 0;
+  if (unknown.length > 0) {
+    const snaps = await db.getAll(...unknown.map((d) => col.doc(d.id)));
+    reads += snaps.length;
+    for (const s of snaps) if (s.exists) existing.set(s.id, stateOf(s.data() as DealState));
+  }
+  if (existing.size > 0) cache.hasAnyDeal = true;
+  if (!cache.hasAnyDeal) {
+    reads++;
+    cache.hasAnyDeal = !(await col.limit(1).get()).empty;
+  }
+  // First run against an empty database: store the backlog without alerting on it.
+  const bootstrap = !cache.hasAnyDeal;
 
   // Group new posts with the same deal seen on other boards.
   const fresh = deals.filter((d) => !existing.has(d.id));
@@ -55,6 +92,7 @@ export async function runCrawl(db: Firestore, messaging: Messaging, now = new Da
     const key = shopPriceKey(d);
     if (!key) continue;
     const q = await col.where("shopPriceKey", "==", key).limit(20).get();
+    reads += Math.max(q.size, 1);
     const earlier = q.docs
       .map((doc) => docToDeal(doc.data()))
       .filter((c) => now.getTime() - c.postedAt.getTime() < GROUP_WINDOW_MS);
@@ -72,30 +110,41 @@ export async function runCrawl(db: Firestore, messaging: Messaging, now = new Da
     writer = db.batch();
     ops = 0;
   };
+  const nextCache = new Map<string, DealState>();
   for (const d of deals) {
     const prev = existing.get(d.id);
     if (!prev) {
       writer.set(col.doc(d.id), dealToDoc(d, now));
+      nextCache.set(d.id, stateOf(d));
     } else {
-      const changes: DocumentData = {};
-      for (const k of ["upvotes", "comments", "views", "isEnded", "thumbnail"] as const) {
-        if (d[k] !== null && d[k] !== prev[k]) changes[k] = d[k];
-      }
-      if (Object.keys(changes).length === 0) continue;
-      changes.updatedAt = Timestamp.fromDate(now);
-      writer.update(col.doc(d.id), changes);
+      const changes = dealChanges(prev, stateOf(d), now);
+      nextCache.set(d.id, { ...prev, ...changes });
+      if (!changes) continue;
+      writer.update(col.doc(d.id), { ...changes, updatedAt: Timestamp.fromDate(now) });
       updated++;
     }
     if (++ops >= 450) await flush();
   }
   await flush();
+  // Keep only what is still on the boards' first pages.
+  cache.deals = nextCache;
+  if (deals.length > 0) cache.hasAnyDeal = true;
 
   const notifiable = bootstrap
     ? []
     : fresh.filter((d) => !d.isEnded && now.getTime() - d.postedAt.getTime() < ALERT_WINDOW_MS);
-  const { notified, pushed } = notifiable.length ? await sendAlerts(db, messaging, notifiable, now) : { notified: 0, pushed: 0 };
+  let notified = 0;
+  let pushed = 0;
+  if (notifiable.length > 0) {
+    if (!cache.rules || now.getTime() - cache.rules.at > RULES_TTL_MS) {
+      const rules = await loadRules(db);
+      reads += Math.max(rules.length, 1);
+      cache.rules = { at: now.getTime(), rules };
+    }
+    ({ notified, pushed } = await sendAlerts(db, messaging, notifiable, cache.rules.rules, now));
+  }
 
-  return { perSource, fresh: fresh.length, updated, notified, pushed };
+  return { perSource, fresh: fresh.length, updated, reads, notified, pushed };
 }
 
 function docToRule(id: string, uid: string, data: DocumentData): AlertRule {
@@ -121,14 +170,16 @@ function docToUser(uid: string, data: DocumentData | undefined): UserSettings {
   };
 }
 
-async function sendAlerts(db: Firestore, messaging: Messaging, deals: Deal[], now: Date) {
-  // All rules are read only when there are new deals; fine for the MVP scale.
+/** All enabled alert rules. Read only when there are new deals, and cached by long-running runners. */
+async function loadRules(db: Firestore): Promise<AlertRule[]> {
   const ruleSnap = await db.collectionGroup("alerts").get();
-  const rules = ruleSnap.docs
+  return ruleSnap.docs
     .filter((d) => d.ref.parent.parent !== null)
     .map((d) => docToRule(d.id, d.ref.parent.parent!.id, d.data()))
     .filter((r) => r.enabled && r.keyword.trim());
+}
 
+async function sendAlerts(db: Firestore, messaging: Messaging, deals: Deal[], rules: AlertRule[], now: Date) {
   const matches = matchDeals(deals, rules);
   if (matches.length === 0) return { notified: 0, pushed: 0 };
 

@@ -1,0 +1,45 @@
+# Hot-deal crawler on GitHub Actions (free alternative to the Blaze-only Cloud Function).
+#
+# Each run crawls every 2 minutes for ~25 minutes; a new run is scheduled every
+# 15 minutes and waits for the previous one, so coverage stays close to continuous
+# even when GitHub starts scheduled runs late.
+#
+# Needs the repository secret FIREBASE_SERVICE_ACCOUNT (service account key JSON).
+# Note: GitHub pauses scheduled workflows after 60 days without repository activity.
+name: crawl
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to keep crawling (minutes)"
+        default: "25"
+
+concurrency:
+  group: crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Crawl
+        run: node lib/run.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RUN_FOR_MINUTES: ${{ github.event.inputs.minutes || '25' }}
+          INTERVAL_SECONDS: "120"
