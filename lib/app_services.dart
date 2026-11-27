@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,11 +26,10 @@ class AppServices {
       try {
         // Reads GoogleService-Info.plist / google-services.json added by `flutterfire configure`.
         await Firebase.initializeApp();
-        if (FirebaseAuth.instance.currentUser == null) {
-          // Feed reading works without auth; alerts retry sign-in when needed.
-          FirebaseAuth.instance.signInAnonymously().ignore();
-        }
-        return instance = AppServices._(DataMode.firebase, FirestoreDealRepository(), FirestoreUserRepository());
+        final user = FirestoreUserRepository();
+        // Feed reading works without auth, so don't block startup on it.
+        user.ensureSignedIn().ignore();
+        return instance = AppServices._(DataMode.firebase, FirestoreDealRepository(), user);
       } catch (e) {
         if (kReleaseMode) rethrow;
         debugPrint('Firebase unavailable, using fixture data: $e');

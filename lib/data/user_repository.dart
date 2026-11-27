@@ -29,8 +29,20 @@ class FirestoreUserRepository implements UserRepository {
   @override
   bool get supportsPush => true;
 
+  /// One sign-in shared by every caller: concurrent calls at startup would
+  /// otherwise each create their own anonymous user.
+  static Future<User>? _signIn;
+
+  Future<User> ensureSignedIn() => _signIn ??= () async {
+        // Wait for the persisted session to be restored before deciding to sign in,
+        // or a returning user would get a new anonymous account and lose their alerts.
+        final restored = _auth.currentUser ?? await _auth.authStateChanges().first;
+        return restored ?? (await _auth.signInAnonymously()).user!;
+      }()
+          .whenComplete(() => _signIn = null);
+
   Future<DocumentReference<Map<String, dynamic>>> _userDoc() async {
-    final user = _auth.currentUser ?? (await _auth.signInAnonymously()).user!;
+    final user = await ensureSignedIn();
     return _db.collection('users').doc(user.uid);
   }
 
