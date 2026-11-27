@@ -1,8 +1,10 @@
 # Hot-deal crawler on GitHub Actions (free alternative to the Blaze-only Cloud Function).
 #
-# Each run crawls every 2 minutes for ~25 minutes; a new run is scheduled every
-# 15 minutes (at :07/:22/:37/:52, off the busy quarter-hours) and waits for the previous one, so coverage stays close to continuous
-# even when GitHub starts scheduled runs late.
+# Each run crawls every 2 minutes for ~25 minutes, then starts the next run itself
+# (workflow_dispatch with the job's token), so crawling continues without relying on
+# GitHub's schedule, which had not fired at all for this repository.
+# The schedule stays as a backup that restarts the chain if it ever breaks.
+# The chain stops after a failed run, or when the repository variable CRAWL_CHAIN is "off".
 #
 # Needs the repository secret FIREBASE_SERVICE_ACCOUNT (service account key JSON).
 # Note: GitHub pauses scheduled workflows after 60 days without repository activity.
@@ -17,9 +19,14 @@ on:
         description: "How long to keep crawling (minutes)"
         default: "25"
 
+# One run at a time; a newly started run waits for the current one.
 concurrency:
   group: crawl
   cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write # to start the next run
 
 jobs:
   crawl:
@@ -43,3 +50,8 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           RUN_FOR_MINUTES: ${{ github.event.inputs.minutes || '25' }}
           INTERVAL_SECONDS: "120"
+      - name: Start the next run
+        if: success() && vars.CRAWL_CHAIN != 'off'
+        run: gh workflow run crawl.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f minutes=25
+        env:
+          GH_TOKEN: ${{ github.token }}
