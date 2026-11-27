@@ -46,6 +46,18 @@ void main() {
     expect(groups.first.sourceNames, ['뽐뿌', '아카라이브']);
   });
 
+  test('a group without its own image borrows another board\'s', () {
+    final noImage = _deal('ppomppu_1', up: 9);
+    final withImage = Deal.fromMap('arca_2', {
+      'source': 'arca', 'groupKey': 'ppomppu_1', 'thumbnail': 'https://img/a.jpg',
+      'postedAt': DateTime.now().toUtc().toIso8601String(),
+    });
+    final group = DealGroup.fromDeals([noImage, withImage]).single;
+    expect(group.primary.id, 'ppomppu_1');
+    expect(group.thumbnail, 'https://img/a.jpg');
+    expect(DealGroup.fromDeals([noImage]).single.thumbnail, isNull);
+  });
+
   test('hot score favours engagement and decays with age', () {
     final now = DateTime.now();
     final fresh = _deal('a_1', up: 5, age: const Duration(hours: 1));

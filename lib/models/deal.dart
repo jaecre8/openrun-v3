@@ -128,6 +128,10 @@ class DealGroup {
   bool get isEnded => deals.every((d) => d.isEnded);
   List<String> get sourceNames => deals.map((d) => d.sourceName).toSet().toList();
 
+  /// The representative post's image, or another board's image of the same deal
+  /// (ppomppu's RSS carries no images).
+  String? get thumbnail => primary.thumbnail ?? deals.map((d) => d.thumbnail).firstWhere((t) => t != null, orElse: () => null);
+
   double hotScore(DateTime now) => deals.map((d) => d.hotScore(now)).reduce((a, b) => a + b);
 
   /// Groups deals by groupKey, keeping the order in which each group first appears.

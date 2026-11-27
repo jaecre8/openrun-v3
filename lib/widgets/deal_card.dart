@@ -81,7 +81,7 @@ class DealCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Thumb(deal: d, ended: ended),
+                _Thumb(deal: d, thumbnail: group.thumbnail, ended: ended),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -140,18 +140,85 @@ class DealCard extends StatelessWidget {
   }
 }
 
+/// Background colours for shop tiles shown when a deal has no image.
+/// Plain colour + the shop's name in text; no logos.
+const _shopColors = {
+  '쿠팡': Color(0xFFE5483B),
+  'G마켓': Color(0xFF2DB400),
+  '옥션': Color(0xFFE4002B),
+  '11번가': Color(0xFFFF3B4E),
+  '네이버': Color(0xFF03C75A),
+  '네이버페이': Color(0xFF03C75A),
+  'SSG': Color(0xFFFF5A2E),
+  '롯데온': Color(0xFFE0001B),
+  '토스쇼핑': Color(0xFF3182F6),
+  '알리익스프레스': Color(0xFFFF6A00),
+  '아마존': Color(0xFF232F3E),
+  '아마존재팬': Color(0xFF232F3E),
+  '무신사': Color(0xFF111111),
+  '29CM': Color(0xFF111111),
+  'GS SHOP': Color(0xFF6CC24A),
+  '하이마트': Color(0xFFE60012),
+  '이베이': Color(0xFF0064D2),
+  '스팀': Color(0xFF1B2838),
+  '에픽게임즈': Color(0xFF2A2A2A),
+  '앱스토어': Color(0xFF0A84FF),
+  '플레이스토어': Color(0xFF01875F),
+};
+
+/// Shops not in the list get a stable colour from a muted palette.
+const _fallbackColors = [
+  Color(0xFF5B6CFF), Color(0xFF00A3A3), Color(0xFFB45CE6), Color(0xFFE68A00),
+  Color(0xFF3D8BFD), Color(0xFFD9467A), Color(0xFF4F9D2D), Color(0xFF7A6CF0),
+];
+
+Color shopColor(String shop) =>
+    _shopColors[shop] ?? _fallbackColors[shop.codeUnits.fold<int>(0, (h, c) => (h * 31 + c) & 0x7fffffff) % _fallbackColors.length];
+
 class _Thumb extends StatelessWidget {
   final Deal deal;
+  final String? thumbnail;
   final bool ended;
-  const _Thumb({required this.deal, required this.ended});
+  const _Thumb({required this.deal, required this.thumbnail, required this.ended});
+
+  Widget _placeholder() {
+    final shop = deal.shop;
+    if (shop == null) {
+      return Container(
+        color: AppColors.bg,
+        alignment: Alignment.center,
+        child: Icon(_categoryIcons[deal.category], color: const Color(0xFFBDBDC2), size: 30),
+      );
+    }
+    return Container(
+      color: shopColor(shop),
+      padding: const EdgeInsets.all(8),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(_categoryIcons[deal.category], color: Colors.white70, size: 18),
+          const SizedBox(height: 4),
+          Text(
+            shop,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: shop.length <= 4 ? 15 : 12,
+              height: 1.15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = Container(
-      color: AppColors.bg,
-      alignment: Alignment.center,
-      child: Icon(_categoryIcons[deal.category], color: const Color(0xFFBDBDC2), size: 30),
-    );
+    final placeholder = _placeholder();
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
@@ -160,9 +227,9 @@ class _Thumb extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            deal.thumbnail == null
+            thumbnail == null
                 ? placeholder
-                : Image.network(deal.thumbnail!, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder),
+                : Image.network(thumbnail!, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder),
             if (ended)
               Container(
                 color: Colors.black45,

@@ -17,7 +17,7 @@ const SHOP_ALIASES: Record<string, string> = {
   "gsshop": "GS SHOP",
   "토스": "토스쇼핑", "토스쇼핑": "토스쇼핑",
   "알리": "알리익스프레스", "알리익스프레스": "알리익스프레스", "aliexpress": "알리익스프레스",
-  "아마존": "아마존", "아미존": "아마존", "amazon": "아마존", "amazon.com": "아마존",
+  "아마존": "아마존", "아미존": "아마존", "미마존": "아마존", "amazon": "아마존", "amazon.com": "아마존",
   "amazon.jp": "아마존재팬", "일본아마존": "아마존재팬", "아마존재팬": "아마존재팬",
   "ebay": "이베이", "ebay.com": "이베이",
   "bestbuy": "베스트바이", "newegg": "뉴에그", "newegg.com": "뉴에그",
