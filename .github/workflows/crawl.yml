@@ -1,7 +1,7 @@
 # Hot-deal crawler on GitHub Actions (free alternative to the Blaze-only Cloud Function).
 #
 # Each run crawls every 2 minutes for ~25 minutes; a new run is scheduled every
-# 15 minutes and waits for the previous one, so coverage stays close to continuous
+# 15 minutes (at :07/:22/:37/:52, off the busy quarter-hours) and waits for the previous one, so coverage stays close to continuous
 # even when GitHub starts scheduled runs late.
 #
 # Needs the repository secret FIREBASE_SERVICE_ACCOUNT (service account key JSON).
@@ -10,7 +10,7 @@ name: crawl
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       minutes:
