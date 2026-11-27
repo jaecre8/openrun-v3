@@ -58,6 +58,17 @@ void main() {
     expect(DealGroup.fromDeals([noImage]).single.thumbnail, isNull);
   });
 
+  test('ppomppu posts without a stored image get the CDN thumbnail', () {
+    Deal d(String source, String postId, [String? thumb]) =>
+        Deal.fromMap('${source}_$postId', {'source': source, 'postId': postId, 'thumbnail': thumb});
+    expect(d('ppomppu', '752418').thumbnail,
+        'https://cdn4.ppomppu.co.kr/zboard/data/_thumb/ppomppu/8/small_752418.jpg');
+    expect(d('ppomppu_global', '126977').thumbnail,
+        'https://cdn4.ppomppu.co.kr/zboard/data/_thumb/ppomppu4/7/small_126977.jpg');
+    expect(d('ppomppu', '1', 'https://x/y.jpg').thumbnail, 'https://x/y.jpg');
+    expect(d('clien', '19299082').thumbnail, isNull);
+  });
+
   test('hot score favours engagement and decays with age', () {
     final now = DateTime.now();
     final fresh = _deal('a_1', up: 5, age: const Duration(hours: 1));

@@ -84,7 +84,7 @@ class Deal {
       currency: m['currency'] as String?,
       shippingFee: m['shippingFee'] as num?,
       category: DealCategory.parse(m['category']),
-      thumbnail: (m['thumbnail'] as String?)?.isEmpty == true ? null : m['thumbnail'] as String?,
+      thumbnail: _thumbnailOf(m),
       postedAt: posted is Timestamp
           ? posted.toDate()
           : posted is String
@@ -96,6 +96,17 @@ class Deal {
       isEnded: m['isEnded'] == true,
       groupKey: m['groupKey'] as String? ?? id,
     );
+  }
+
+  /// Ppomppu list thumbnails live at a path derived from the post number, so posts
+  /// stored before the crawler set them (RSS has no images) still get one.
+  static String? _thumbnailOf(Map<String, dynamic> m) {
+    final t = m['thumbnail'] as String?;
+    if (t != null && t.isNotEmpty) return t;
+    final postId = m['postId']?.toString() ?? '';
+    final board = switch (m['source']) { 'ppomppu' => 'ppomppu', 'ppomppu_global' => 'ppomppu4', _ => null };
+    if (board == null || !RegExp(r'^\d+$').hasMatch(postId)) return null;
+    return 'https://cdn4.ppomppu.co.kr/zboard/data/_thumb/$board/${postId[postId.length - 1]}/small_$postId.jpg';
   }
 
   String? get priceLabel => formatPrice(price, currency);
