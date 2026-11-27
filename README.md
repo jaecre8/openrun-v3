@@ -95,6 +95,23 @@ flutter run --dart-define=USE_FIXTURE=true
 
 디버그 빌드는 Firebase 설정 파일이 없으면 자동으로 샘플 데이터 모드로 실행됩니다. 릴리스 빌드는 항상 Firebase를 사용합니다.
 
+## 현재 운영 방식: GitHub Actions (무료)
+
+Blaze 요금제 없이 [`.github/workflows/crawl.yml`](.github/workflows/crawl.yml)이 수집기를 돌립니다.
+
+- 15분마다 작업이 시작되고, 각 작업은 25분 동안 2분 간격으로 수집합니다. 이전 작업이 끝나야 다음 작업이 시작돼서, GitHub의 예약 지연이 있어도 거의 끊김 없이 수집됩니다.
+- 저장소 시크릿 `FIREBASE_SERVICE_ACCOUNT`(서비스 계정 키 JSON)가 필요합니다.
+- Firestore 무료 한도(읽기 5만, 쓰기 2만/일) 안에 들도록, 조회수 변화는 크게 바뀔 때만 저장하고 같은 작업 안에서는 이미 읽은 글을 다시 읽지 않습니다.
+- 공개 저장소에서 60일 동안 커밋이 없으면 GitHub가 예약 실행을 멈춥니다. Actions 탭에서 다시 켜면 됩니다.
+- GitHub 약관은 Actions를 프로젝트와 무관한 상시 서버 용도로 쓰는 것을 제한합니다. 사용자가 늘면 Blaze의 Cloud Function(`crawlDeals`, 코드 그대로)으로 옮기세요.
+- 아카라이브는 GitHub 서버 IP를 차단(403)해서 이 방식에서는 수집되지 않습니다.
+
+같은 수집기를 다른 상시 실행 환경(VM 등)에서 돌릴 수도 있습니다.
+
+```bash
+cd functions && npm ci && npm run build && GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json RUN_FOR_MINUTES=1440 node lib/run.js
+```
+
 ## 알아둘 점
 
 - 펨코(에펨코리아)는 Cloudflare 보안 챌린지로 서버 수집이 막혀 있어 아카라이브 핫딜로 대체했습니다.
