@@ -1,13 +1,31 @@
 export const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
+export class HttpError extends Error {
+  constructor(readonly url: string, readonly status: number) {
+    super(`${url} → HTTP ${status}`);
+  }
+}
+
+/** Fetches a page and decodes it with the charset it declares (header or <meta>), e.g. EUC-KR. */
 export async function fetchText(url: string, userAgent: string, timeoutMs = 10_000): Promise<string> {
   const res = await fetch(url, {
     headers: { "User-Agent": userAgent, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
-  return await res.text();
+  if (!res.ok) throw new HttpError(url, res.status);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 2048));
+  const charset =
+    res.headers.get("content-type")?.match(/charset=([\w-]+)/i)?.[1] ??
+    head.match(/<meta[^>]+charset=["']?([\w-]+)/i)?.[1] ??
+    head.match(/<\?xml[^>]+encoding=["']([\w-]+)/i)?.[1] ??
+    "utf-8";
+  try {
+    return new TextDecoder(charset.toLowerCase()).decode(bytes);
+  } catch {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
 }
 
 /** "3,973" → 3973, "17.0 k" → 17000, "1.2만" → 12000. */

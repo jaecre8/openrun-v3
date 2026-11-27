@@ -115,6 +115,6 @@ cd functions && npm ci && npm run build && GOOGLE_APPLICATION_CREDENTIALS=/path/
 ## 알아둘 점
 
 - 펨코(에펨코리아)는 Cloudflare 보안 챌린지로 서버 수집이 막혀 있어 아카라이브 핫딜로 대체했습니다.
-- 뽐뿌는 목록 페이지가 막혀 있어 RSS를 씁니다. RSS에는 썸네일이 없습니다.
+- 뽐뿌는 목록 페이지(HTML)를 먼저 시도하고, 거절되면(403) RSS로 받습니다. 거절된 뒤 30분 동안은 HTML을 다시 시도하지 않습니다. RSS에는 썸네일과 종료 표시가 없습니다. 뽐뿌가 UA `OpenRun/3.0 (hot-deal aggregator)`를 허용하면 코드 수정 없이 HTML로 전환됩니다. HTML 파서는 실제 페이지로 아직 검증하지 못했습니다(`functions/test/ppomppu_html.test.ts`).
 - 아카라이브 썸네일 URL은 약 1시간 뒤 만료됩니다. 첫 페이지에 있는 동안은 수집할 때마다 갱신되고, 만료되면 카테고리 아이콘으로 표시됩니다.
 - 루리웹 RSS에는 추천·댓글 수가 없어 인기순에서 불리합니다.

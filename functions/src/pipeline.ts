@@ -57,7 +57,9 @@ export async function runCrawl(
 ): Promise<CrawlStats> {
   const results: CrawlResult[] = await crawlAll();
   const perSource: Record<string, number | string> = {};
-  for (const r of results) perSource[r.source] = r.error ?? r.posts.length;
+  for (const r of results) {
+    perSource[r.source] = r.error ?? (r.via ? `${r.posts.length} ${r.via === "preferred" ? "html" : "rss"}` : r.posts.length);
+  }
 
   // A board can list the same post twice (pinned + regular row).
   const byId = new Map(results.flatMap((r) => r.posts).map((p) => normalize(p, now)).map((d) => [d.id, d]));
