@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function validAlert(d) {
+      return d.keys().hasOnly(['keyword', 'maxPrice', 'excludeWords', 'shops', 'categories', 'enabled', 'createdAt', 'updatedAt'])
+        && d.keyword is string && d.keyword.size() > 0 && d.keyword.size() <= 40
+        && (d.maxPrice == null || d.maxPrice is int)
+        && d.excludeWords is list && d.excludeWords.size() <= 10
+        && d.shops is list && d.shops.size() <= 10
+        && d.categories is list && d.categories.size() <= 7
+        && d.enabled is bool;
+    }
+
+    // Deals are written only by the crawler (Admin SDK bypasses rules).
+    match /deals/{dealId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && (!('fcmTokens' in request.resource.data) || request.resource.data.fcmTokens.size() <= 10);
+
+      match /alerts/{alertId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validAlert(request.resource.data);
+      }
+
+      // Alert history, written by the crawler.
+      match /sent/{sentId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
+      }
+    }
+  }
+}
