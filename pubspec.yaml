@@ -1,5 +1,5 @@
 name: openrun
-description: "A new Flutter project."
+description: "오픈런 - 커뮤니티 핫딜 모아보기와 스마트 알림"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.0.1+26
+version: 3.0.0+27
 
 environment:
   sdk: ^3.11.3
@@ -30,13 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  http: ^1.1.0
-  html: ^0.15.4
   webview_flutter: ^4.4.2
-  cp949_codec: ^1.0.2  # 한글 깨짐 방지용
   flutter_local_notifications: ^17.2.2 # 알림 패키지 추가
-  xml: ^6.5.0  # XML 파싱을 위해 추가
-  workmanager: ^0.9.0+3               # 백그라운드 작업 실행
   shared_preferences: ^2.2.2
   # 아래 세 줄을 추가하거나 확인하세요
   flutter_localizations:
@@ -47,6 +42,12 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  firebase_core: ^5.1.0
+  firebase_auth: ^7.0.1
+  cloud_firestore: ^7.1.0
+  firebase_messaging: ^17.0.1
+  cloud_functions: ^7.0.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
@@ -108,3 +109,4 @@ flutter:
     - assets/images/sample/
     - assets/images/home/
     - assets/images/mypage/
+    - assets/fixtures/
