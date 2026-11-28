@@ -74,6 +74,9 @@ Deno.test("category from board category, then keywords", () => {
   assertEquals(classify("YouPlay 일시 무료", null, "앱스토어"), "game");
   assertEquals(classify("한우 꽃등심 200gx3팩", null, null), "food");
   assertEquals(classify("다이소 신상 모음", null, null), "etc");
+  // "아디제로" contains "제로" but is a running shoe
+  assertEquals(classify("아디다스 아디제로 EVO SL", null, null), "fashion");
+  assertEquals(classify("코카콜라 제로 190ml 30캔", null, null), "food");
 });
 
 Deno.test("normalize builds a full deal", () => {
