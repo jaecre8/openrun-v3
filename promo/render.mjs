@@ -1,5 +1,5 @@
 // Renders promo.html to frames, then to an MP4 with ffmpeg.
-//   node render.mjs                 → full video (out/openrun_shorts.mp4)
+//   node render.mjs [page.html]     → full video (promo.html → out/openrun_shorts.mp4, review.html → out/review_video.mp4)
 //   node render.mjs --stills 1.5 9  → only PNG stills at those seconds (out/still_*.png)
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
@@ -8,6 +8,8 @@ import puppeteer from "puppeteer-core";
 const FPS = 30;
 const dir = new URL(".", import.meta.url).pathname;
 const args = process.argv.slice(2);
+const pageArg = args[0]?.endsWith(".html") ? args.shift() : "promo.html";
+const outName = pageArg === "promo.html" ? "openrun_shorts.mp4" : "review_video.mp4";
 const stills = args[0] === "--stills" ? args.slice(1).map(Number) : null;
 
 const browser = await puppeteer.launch({
@@ -16,7 +18,7 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1080, height: 1920, deviceScaleFactor: 1 });
-await page.goto(`file://${dir}promo.html`, { waitUntil: "networkidle0" });
+await page.goto(`file://${dir}${pageArg}`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.fonts.ready);
 const duration = await page.evaluate(() => window.DURATION);
 
@@ -37,8 +39,8 @@ if (stills) {
   }
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(FPS), "-i", `${dir}frames/%04d.jpg`,
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "slow", "-movflags", "+faststart",
-    `${dir}out/openrun_shorts.mp4`]);
+    `${dir}out/${outName}`]);
   rmSync(`${dir}frames`, { recursive: true, force: true });
-  console.log("wrote out/openrun_shorts.mp4");
+  console.log(`wrote out/${outName}`);
 }
 await browser.close();

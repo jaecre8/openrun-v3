@@ -34,3 +34,5 @@ service-account*.json
 promo/node_modules/
 promo/out/
 promo/frames/
+promo/.venv/
+promo/__pycache__/
