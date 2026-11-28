@@ -42,6 +42,8 @@ export interface Notification {
   uid: string;
   deal: Deal;
   rule: AlertRule;
+  /** keyword rule (default), a tracked product, or a hot deal the user opted in to. */
+  kind?: "keyword" | "tracked" | "hot";
 }
 
 /**
@@ -84,8 +86,9 @@ export function formatPrice(deal: Pick<Deal, "price" | "currency">): string | nu
 export function notificationText(n: Notification): { title: string; body: string } {
   const price = formatPrice(n.deal);
   const shop = n.deal.shop ? `[${n.deal.shop}] ` : "";
-  return {
-    title: `🔥 '${n.rule.keyword}' 핫딜${price ? ` · ${price}` : ""}`,
-    body: `${shop}${n.deal.productName} · ${n.deal.sourceName}`,
-  };
+  const body = `${shop}${n.deal.productName} · ${n.deal.sourceName}`;
+  const badge = n.deal.insightKind === "lowest" ? " · 역대 최저가" : "";
+  if (n.kind === "tracked") return { title: `📉 추적 상품 핫딜${price ? ` · ${price}` : ""}${badge}`, body };
+  if (n.kind === "hot") return { title: `🚀 지금 뜨는 딜${price ? ` · ${price}` : ""}`, body };
+  return { title: `🔥 '${n.rule.keyword}' 핫딜${price ? ` · ${price}` : ""}${badge}`, body };
 }

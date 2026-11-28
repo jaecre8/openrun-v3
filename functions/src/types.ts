@@ -53,6 +53,12 @@ export interface Deal {
   views: number;
   isEnded: boolean;
   groupKey: string;
+  /** Same product across deals (insight.ts); null when the post is not one product. */
+  productKey?: string | null;
+  /** "lowest" = 역대 최저가, "below_avg" = 평소보다 저렴; set when first seen. */
+  insightKind?: "lowest" | "below_avg" | null;
+  insight?: { prevLowest: number | null; avg: number | null; pct: number | null; samples: number } | null;
+  hotScore?: number;
 }
 
 export interface AlertRule {
@@ -70,6 +76,8 @@ export interface UserSettings {
   uid: string;
   fcmTokens: string[];
   pushEnabled: boolean;
+  /** Opted in to "지금 뜨는 딜" pushes. */
+  hotPush?: boolean;
   /** Quiet hours in KST, 0-23. Both null = off. */
   quietStart: number | null;
   quietEnd: number | null;

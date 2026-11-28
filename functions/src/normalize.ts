@@ -1,3 +1,4 @@
+import { productKey } from "./insight";
 import { Category, Currency, Deal, RawPost, SOURCE_NAMES, SourceId } from "./types";
 
 // ---------------------------------------------------------------- shop
@@ -238,5 +239,6 @@ export function normalize(post: RawPost, now: Date = new Date()): Deal {
     views: post.views ?? 0,
     isEnded: post.isEnded,
     groupKey: id,
+    productKey: productKey(name),
   };
 }

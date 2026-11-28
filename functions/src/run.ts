@@ -7,11 +7,12 @@
  *   FIREBASE_SERVICE_ACCOUNT  service account key JSON (or set GOOGLE_APPLICATION_CREDENTIALS to a key file)
  *   RUN_FOR_MINUTES           keep crawling for this long (default 0 = one run, then exit)
  *   INTERVAL_SECONDS          pause between runs while looping (default 120)
+ *   TASK=backfill             instead of crawling, rebuild product price histories from stored deals once
  */
 import { applicationDefault, cert, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { CrawlCache, runCrawl } from "./pipeline";
+import { backfillProducts, CrawlCache, runCrawl } from "./pipeline";
 
 const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
 initializeApp({ credential: serviceAccount ? cert(JSON.parse(serviceAccount)) : applicationDefault() });
@@ -23,6 +24,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const db = getFirestore();
+  if (process.env.TASK === "backfill") {
+    console.log("backfill", JSON.stringify(await backfillProducts(db)));
+    return;
+  }
   const messaging = getMessaging();
   const cache = new CrawlCache();
   const started = Date.now();

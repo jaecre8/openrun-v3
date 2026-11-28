@@ -15,10 +15,27 @@ service cloud.firestore {
         && d.enabled is bool;
     }
 
-    // Deals are written only by the crawler (Admin SDK bypasses rules).
+    // Deals and product price histories are written only by the crawler (Admin SDK bypasses rules).
     match /deals/{dealId} {
       allow read: if true;
       allow write: if false;
+    }
+    match /products/{key} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    function validFavorite(d) {
+      return d.keys().hasOnly(['dealId', 'title', 'productName', 'shop', 'price', 'currency', 'thumbnail', 'url',
+                               'sourceName', 'groupKey', 'productKey', 'postedAt', 'savedAt'])
+        && d.dealId is string && d.url is string && d.url.size() <= 500
+        && d.productName is string && d.productName.size() <= 300;
+    }
+
+    function validTracked(d, key) {
+      return d.keys().hasOnly(['key', 'name', 'targetPrice', 'createdAt', 'updatedAt'])
+        && d.key == key && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && (d.targetPrice == null || (d.targetPrice is int && d.targetPrice > 0));
     }
 
     match /users/{uid} {
@@ -29,6 +46,18 @@ service cloud.firestore {
       match /alerts/{alertId} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid) && validAlert(request.resource.data);
+      }
+
+      // 찜한 딜 (a snapshot of the deal when saved).
+      match /favorites/{dealId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validFavorite(request.resource.data) && request.resource.data.dealId == dealId;
+      }
+
+      // 추적 상품: products/{key} the user follows, with an optional target price.
+      match /tracked/{key} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validTracked(request.resource.data, key);
       }
 
       // Alert history, written by the crawler.

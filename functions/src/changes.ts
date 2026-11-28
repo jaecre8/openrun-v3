@@ -10,6 +10,8 @@ export interface DealState {
   views: number;
   isEnded: boolean;
   thumbnail: string | null;
+  /** Already announced as a hot deal (hotAt set). */
+  hot?: boolean;
 }
 
 /** Refresh a signed thumbnail URL only when the stored one is about to expire. */
@@ -39,6 +41,9 @@ export function dealChanges(prev: DealState, next: DealState, now: Date): Partia
   return Object.keys(c).length > 0 ? c : null;
 }
 
-export function stateOf(d: DealState): DealState {
-  return { upvotes: d.upvotes, comments: d.comments, views: d.views, isEnded: d.isEnded, thumbnail: d.thumbnail };
+export function stateOf(d: DealState & { hotAt?: unknown }): DealState {
+  return {
+    upvotes: d.upvotes, comments: d.comments, views: d.views, isEnded: d.isEnded, thumbnail: d.thumbnail,
+    hot: d.hot ?? (d.hotAt !== undefined && d.hotAt !== null),
+  };
 }

@@ -18,10 +18,14 @@ on:
       minutes:
         description: "How long to keep crawling (minutes)"
         default: "25"
+      task:
+        description: "crawl, or backfill (rebuild product price histories once)"
+        default: "crawl"
 
 # One run at a time; a newly started run waits for the current one.
+# Backfill gets its own group so it never replaces the queued crawl run.
 concurrency:
-  group: crawl
+  group: ${{ github.event.inputs.task == 'backfill' && 'backfill' || 'crawl' }}
   cancel-in-progress: false
 
 permissions:
@@ -49,9 +53,10 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           RUN_FOR_MINUTES: ${{ github.event.inputs.minutes || '25' }}
+          TASK: ${{ github.event.inputs.task || 'crawl' }}
           INTERVAL_SECONDS: "120"
       - name: Start the next run
-        if: success() && vars.CRAWL_CHAIN != 'off'
+        if: success() && vars.CRAWL_CHAIN != 'off' && github.event.inputs.task != 'backfill'
         run: gh workflow run crawl.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f minutes=25
         env:
           GH_TOKEN: ${{ github.token }}

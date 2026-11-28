@@ -2,6 +2,7 @@ import { DocumentData, FieldValue, Firestore, Timestamp } from "firebase-admin/f
 import type { Messaging } from "firebase-admin/messaging";
 import { dealChanges, DealState, stateOf } from "./changes";
 import { assignGroup, shopPriceKey } from "./group";
+import { addPrice, hotScore, priceInsight, ProductDoc } from "./insight";
 import { inQuietHours, matchDeals, Notification, notificationText } from "./match";
 import { normalize } from "./normalize";
 import { crawlAll, CrawlResult } from "./sources";
@@ -11,6 +12,15 @@ import { AlertRule, Category, Deal, UserSettings } from "./types";
 const ALERT_WINDOW_MS = 6 * 60 * 60 * 1000;
 /** How far back a new post looks for the same deal on other boards. */
 const GROUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+/** "지금 뜨는 딜": hot score, engagement and age a deal needs (calibrated on live boards: ~top 5%). */
+const HOT_SCORE = 3.5;
+const HOT_MIN_ENGAGEMENT = 8;
+const HOT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+function isHot(d: Deal, score: number, now: Date): boolean {
+  return !d.isEnded && score >= HOT_SCORE && d.upvotes + d.comments >= HOT_MIN_ENGAGEMENT &&
+    now.getTime() - d.postedAt.getTime() < HOT_MAX_AGE_MS;
+}
 
 export function dealToDoc(deal: Deal, now: Date): DocumentData {
   return {
@@ -33,6 +43,8 @@ export interface CrawlStats {
   reads: number;
   notified: number;
   pushed: number;
+  hot?: number;
+  products?: number;
 }
 
 /** How long alert rules read from Firestore are reused by a long-running process. */
@@ -46,6 +58,9 @@ const RULES_TTL_MS = 3 * 60 * 1000;
 export class CrawlCache {
   deals = new Map<string, DealState>();
   rules: { at: number; rules: AlertRule[] } | null = null;
+  hotUsers: { at: number; uids: string[] } | null = null;
+  /** products/{key} docs read or written by this process (null = no doc yet). */
+  products = new Map<string, ProductDoc | null>();
   hasAnyDeal = false;
 }
 
@@ -103,6 +118,33 @@ export async function runCrawl(
     groupedThisRun.push(d);
   }
 
+  // Price history per product: badge each new deal against earlier prices of the same product.
+  const priced = fresh
+    .filter((d) => d.productKey && d.currency === "KRW" && d.price !== null && d.price > 0)
+    .sort((a, b) => a.postedAt.getTime() - b.postedAt.getTime());
+  if (cache.products.size > 5000) cache.products.clear();
+  const missing = [...new Set(priced.map((d) => d.productKey!))].filter((k) => !cache.products.has(k));
+  if (missing.length > 0) {
+    const snaps = await db.getAll(...missing.map((k) => db.collection("products").doc(k)));
+    reads += snaps.length;
+    snaps.forEach((snap, i) => cache.products.set(missing[i], snap.exists ? (snap.data() as ProductDoc) : null));
+  }
+  const dirtyProducts = new Set<string>();
+  for (const d of priced) {
+    const key = d.productKey!;
+    const doc = cache.products.get(key) ?? null;
+    const ins = priceInsight(d.price!, doc?.history ?? [], d.groupKey);
+    d.insightKind = ins.kind;
+    d.insight = ins.samples > 0 ? { prevLowest: ins.prevLowest, avg: ins.avg, pct: ins.pct, samples: ins.samples } : null;
+    const next = addPrice(doc, key, d.productName, {
+      price: d.price!, at: d.postedAt.toISOString(), dealId: d.id, groupKey: d.groupKey, shop: d.shop,
+    });
+    if (next !== doc) {
+      cache.products.set(key, next);
+      dirtyProducts.add(key);
+    }
+  }
+
   // Write new deals, and counters/status of deals that changed.
   let writer = db.batch();
   let ops = 0;
@@ -113,18 +155,28 @@ export async function runCrawl(
     ops = 0;
   };
   const nextCache = new Map<string, DealState>();
+  const hotDeals: Deal[] = [];
   for (const d of deals) {
     const prev = existing.get(d.id);
+    const score = Math.round(hotScore(d, now) * 100) / 100;
+    const becameHot = !bootstrap && !prev?.hot && isHot(d, score, now);
+    if (becameHot) hotDeals.push(d);
+    const hotFields = becameHot ? { hotAt: Timestamp.fromDate(now) } : {};
     if (!prev) {
-      writer.set(col.doc(d.id), dealToDoc(d, now));
-      nextCache.set(d.id, stateOf(d));
+      d.hotScore = score;
+      writer.set(col.doc(d.id), { ...dealToDoc(d, now), ...hotFields });
+      nextCache.set(d.id, { ...stateOf(d), hot: becameHot });
     } else {
       const changes = dealChanges(prev, stateOf(d), now);
-      nextCache.set(d.id, { ...prev, ...changes });
-      if (!changes) continue;
-      writer.update(col.doc(d.id), { ...changes, updatedAt: Timestamp.fromDate(now) });
+      nextCache.set(d.id, { ...prev, ...changes, hot: prev.hot || becameHot });
+      if (!changes && !becameHot) continue;
+      writer.update(col.doc(d.id), { ...changes, hotScore: score, ...hotFields, updatedAt: Timestamp.fromDate(now) });
       updated++;
     }
+    if (++ops >= 450) await flush();
+  }
+  for (const key of dirtyProducts) {
+    writer.set(db.collection("products").doc(key), { ...cache.products.get(key), updatedAt: Timestamp.fromDate(now) });
     if (++ops >= 450) await flush();
   }
   await flush();
@@ -135,18 +187,62 @@ export async function runCrawl(
   const notifiable = bootstrap
     ? []
     : fresh.filter((d) => !d.isEnded && now.getTime() - d.postedAt.getTime() < ALERT_WINDOW_MS);
-  let notified = 0;
-  let pushed = 0;
+  const notes: Notification[] = [];
   if (notifiable.length > 0) {
     if (!cache.rules || now.getTime() - cache.rules.at > RULES_TTL_MS) {
       const rules = await loadRules(db);
       reads += Math.max(rules.length, 1);
       cache.rules = { at: now.getTime(), rules };
     }
-    ({ notified, pushed } = await sendAlerts(db, messaging, notifiable, cache.rules.rules, now));
+    notes.push(...matchDeals(notifiable, cache.rules.rules).map((n) => ({ ...n, kind: "keyword" as const })));
+    const tracked = await trackedMatches(db, notifiable);
+    reads += tracked.reads;
+    notes.push(...tracked.notes);
   }
+  if (hotDeals.length > 0) {
+    if (!cache.hotUsers || now.getTime() - cache.hotUsers.at > RULES_TTL_MS) {
+      const snap = await db.collection("users").where("hotPush", "==", true).get();
+      reads += Math.max(snap.size, 1);
+      cache.hotUsers = { at: now.getTime(), uids: snap.docs.map((doc) => doc.id) };
+    }
+    for (const d of hotDeals) {
+      for (const uid of cache.hotUsers.uids) notes.push({ uid, deal: d, rule: pseudoRule(uid, "hot", "지금 뜨는 딜"), kind: "hot" });
+    }
+  }
+  const { notified, pushed } = notes.length > 0 ? await sendAlerts(db, messaging, notes, now) : { notified: 0, pushed: 0 };
 
-  return { perSource, fresh: fresh.length, updated, reads, notified, pushed };
+  return { perSource, fresh: fresh.length, updated, reads, notified, pushed, hot: hotDeals.length, products: dirtyProducts.size };
+}
+
+function pseudoRule(uid: string, id: string, keyword: string): AlertRule {
+  return { id, uid, keyword, maxPrice: null, excludeWords: [], shops: [], categories: [], enabled: true };
+}
+
+/** Users tracking the product of a new deal, at or under their target price (users/{uid}/tracked/{productKey}). */
+async function trackedMatches(db: Firestore, deals: Deal[]): Promise<{ notes: Notification[]; reads: number }> {
+  const byKey = new Map<string, Deal[]>();
+  for (const d of deals) {
+    if (!d.productKey) continue;
+    byKey.set(d.productKey, [...(byKey.get(d.productKey) ?? []), d]);
+  }
+  const keys = [...byKey.keys()];
+  const notes: Notification[] = [];
+  let reads = 0;
+  for (let i = 0; i < keys.length; i += 30) {
+    const snap = await db.collectionGroup("tracked").where("key", "in", keys.slice(i, i + 30)).get();
+    reads += Math.max(snap.size, 1);
+    for (const doc of snap.docs) {
+      const uid = doc.ref.parent.parent?.id;
+      const t = doc.data();
+      if (!uid) continue;
+      const target = typeof t.targetPrice === "number" ? t.targetPrice : null;
+      for (const d of byKey.get(String(t.key)) ?? []) {
+        const ok = target === null || (d.currency === "KRW" && d.price !== null && d.price <= target);
+        if (ok) notes.push({ uid, deal: d, rule: pseudoRule(uid, `tracked:${t.key}`, String(t.name ?? d.productName)), kind: "tracked" });
+      }
+    }
+  }
+  return { notes, reads };
 }
 
 function docToRule(id: string, uid: string, data: DocumentData): AlertRule {
@@ -167,6 +263,7 @@ function docToUser(uid: string, data: DocumentData | undefined): UserSettings {
     uid,
     fcmTokens: Array.isArray(data?.fcmTokens) ? data!.fcmTokens.map(String) : [],
     pushEnabled: data?.pushEnabled !== false,
+    hotPush: data?.hotPush === true,
     quietStart: typeof data?.quietStart === "number" ? data.quietStart : null,
     quietEnd: typeof data?.quietEnd === "number" ? data.quietEnd : null,
   };
@@ -181,9 +278,15 @@ async function loadRules(db: Firestore): Promise<AlertRule[]> {
     .filter((r) => r.enabled && r.keyword.trim());
 }
 
-async function sendAlerts(db: Firestore, messaging: Messaging, deals: Deal[], rules: AlertRule[], now: Date) {
-  const matches = matchDeals(deals, rules);
-  if (matches.length === 0) return { notified: 0, pushed: 0 };
+/** Records and pushes notifications; one per user per deal group, across kinds and runs. */
+async function sendAlerts(db: Firestore, messaging: Messaging, notes: Notification[], now: Date) {
+  const seen = new Set<string>();
+  const matches = notes.filter((n) => {
+    const k = `${n.uid}|${n.deal.groupKey}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 
   const uids = [...new Set(matches.map((m) => m.uid))];
   const userSnaps = await db.getAll(...uids.map((u) => db.collection("users").doc(u)));
@@ -209,6 +312,7 @@ async function recordSent(db: Firestore, n: Notification, delivered: boolean, no
       dealId: n.deal.id,
       groupKey: n.deal.groupKey,
       ruleId: n.rule.id,
+      kind: n.kind ?? "keyword",
       keyword: n.rule.keyword,
       title: n.deal.title,
       productName: n.deal.productName,
@@ -263,4 +367,45 @@ export async function sendTestPush(db: Firestore, messaging: Messaging, uid: str
     apns: { payload: { aps: { sound: "default" } } },
   });
   return res.successCount;
+}
+
+/**
+ * One-time backfill: replays every stored deal oldest first to build products/{key}
+ * histories and set productKey/insight on the deals. Safe to re-run (it rebuilds).
+ */
+export async function backfillProducts(db: Firestore): Promise<{ deals: number; products: number; badged: number }> {
+  const { productKey } = await import("./insight");
+  const snap = await db.collection("deals").orderBy("postedAt", "asc").get();
+  const products = new Map<string, ProductDoc>();
+  let writer = db.batch();
+  let ops = 0;
+  let badged = 0;
+  const flush = async () => {
+    if (ops > 0) await writer.commit();
+    writer = db.batch();
+    ops = 0;
+  };
+  for (const doc of snap.docs) {
+    const d = docToDeal(doc.data());
+    const key = productKey(d.productName ?? d.title);
+    const update: DocumentData = { productKey: key, insightKind: null, insight: null };
+    if (key && d.currency === "KRW" && d.price !== null && d.price > 0) {
+      const prev = products.get(key) ?? null;
+      const ins = priceInsight(d.price, prev?.history ?? [], d.groupKey);
+      update.insightKind = ins.kind;
+      update.insight = ins.samples > 0 ? { prevLowest: ins.prevLowest, avg: ins.avg, pct: ins.pct, samples: ins.samples } : null;
+      if (ins.kind) badged++;
+      products.set(key, addPrice(prev, key, d.productName, {
+        price: d.price, at: d.postedAt.toISOString(), dealId: d.id, groupKey: d.groupKey, shop: d.shop,
+      }));
+    }
+    writer.update(doc.ref, update);
+    if (++ops >= 450) await flush();
+  }
+  for (const [key, p] of products) {
+    writer.set(db.collection("products").doc(key), { ...p, updatedAt: Timestamp.now() });
+    if (++ops >= 450) await flush();
+  }
+  await flush();
+  return { deals: snap.size, products: products.size, badged };
 }
