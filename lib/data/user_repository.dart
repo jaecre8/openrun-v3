@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/alert_rule.dart';
+import '../models/deal.dart';
 
 /// Alert rules, alert history and push settings of the current (anonymous) user.
 abstract class UserRepository {
@@ -20,6 +21,15 @@ abstract class UserRepository {
   Future<void> saveSettings(PushSettings settings);
   Future<void> addFcmToken(String token);
   Future<int> sendTestPush();
+
+  /// 찜한 딜, newest first (snapshots of the deals when saved).
+  Stream<List<Deal>> watchFavorites();
+  Future<void> setFavorite(Deal deal, bool on);
+
+  /// 추적 상품.
+  Stream<List<TrackedProduct>> watchTracked();
+  Future<void> saveTracked(TrackedProduct product);
+  Future<void> deleteTracked(String key);
 }
 
 class FirestoreUserRepository implements UserRepository {
@@ -108,6 +118,49 @@ class FirestoreUserRepository implements UserRepository {
       }, SetOptions(merge: true));
 
   @override
+  Stream<List<Deal>> watchFavorites() async* {
+    final doc = await _userDoc();
+    yield* doc
+        .collection('favorites')
+        .orderBy('savedAt', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) => Deal.fromMap(d.id, d.data())).toList());
+  }
+
+  @override
+  Future<void> setFavorite(Deal deal, bool on) async {
+    final ref = (await _userDoc()).collection('favorites').doc(deal.id);
+    if (on) {
+      await ref.set({...deal.toFavorite(), 'savedAt': FieldValue.serverTimestamp()});
+    } else {
+      await ref.delete();
+    }
+  }
+
+  @override
+  Stream<List<TrackedProduct>> watchTracked() async* {
+    final doc = await _userDoc();
+    yield* doc
+        .collection('tracked')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) => TrackedProduct.fromMap(d.data())).toList());
+  }
+
+  @override
+  Future<void> saveTracked(TrackedProduct p) async {
+    final ref = (await _userDoc()).collection('tracked').doc(p.key);
+    final exists = (await ref.get()).exists;
+    await ref.set({
+      ...p.toMap(),
+      exists ? 'updatedAt' : 'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> deleteTracked(String key) async => (await _userDoc()).collection('tracked').doc(key).delete();
+
+  @override
   Future<int> sendTestPush() async {
     await _userDoc();
     final res = await FirebaseFunctions.instanceFor(region: 'asia-northeast3').httpsCallable('testPush').call();
@@ -184,4 +237,42 @@ class LocalUserRepository implements UserRepository {
 
   @override
   Future<int> sendTestPush() async => 0;
+
+  // Favorites and tracked products stay in memory in the offline fixture mode.
+  final List<Deal> _favorites = [];
+  final List<TrackedProduct> _tracked = [];
+  final _favStream = StreamController<List<Deal>>.broadcast();
+  final _trackStream = StreamController<List<TrackedProduct>>.broadcast();
+
+  @override
+  Stream<List<Deal>> watchFavorites() async* {
+    yield List.of(_favorites);
+    yield* _favStream.stream;
+  }
+
+  @override
+  Future<void> setFavorite(Deal deal, bool on) async {
+    _favorites.removeWhere((d) => d.id == deal.id);
+    if (on) _favorites.insert(0, deal);
+    _favStream.add(List.of(_favorites));
+  }
+
+  @override
+  Stream<List<TrackedProduct>> watchTracked() async* {
+    yield List.of(_tracked);
+    yield* _trackStream.stream;
+  }
+
+  @override
+  Future<void> saveTracked(TrackedProduct p) async {
+    _tracked.removeWhere((t) => t.key == p.key);
+    _tracked.insert(0, p);
+    _trackStream.add(List.of(_tracked));
+  }
+
+  @override
+  Future<void> deleteTracked(String key) async {
+    _tracked.removeWhere((t) => t.key == key);
+    _trackStream.add(List.of(_tracked));
+  }
 }

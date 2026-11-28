@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../models/deal.dart';
+import '../models/product.dart';
 
 class DealPage {
   final List<Deal> deals;
@@ -15,6 +16,12 @@ class DealPage {
 abstract class DealRepository {
   /// Newest first. Pass the previous page's [cursor] to continue.
   Future<DealPage> fetch({DealCategory? category, Object? cursor, int limit = 40});
+
+  /// Deals with a 역대 최저가 / 평소보다 저렴 badge, newest first.
+  Future<DealPage> fetchBargains({Object? cursor, int limit = 40});
+
+  /// Price history of one product, or null if none was recorded.
+  Future<ProductHistory?> product(String key);
 }
 
 class FirestoreDealRepository implements DealRepository {
@@ -30,6 +37,25 @@ class FirestoreDealRepository implements DealRepository {
     final snap = await q.get();
     final deals = snap.docs.map((d) => Deal.fromMap(d.id, d.data())).toList();
     return DealPage(deals, snap.docs.isEmpty ? cursor : snap.docs.last, snap.docs.length == limit);
+  }
+
+  @override
+  Future<DealPage> fetchBargains({Object? cursor, int limit = 40}) async {
+    Query<Map<String, dynamic>> q = _db
+        .collection('deals')
+        .where('insightKind', whereIn: ['lowest', 'below_avg'])
+        .orderBy('postedAt', descending: true)
+        .limit(limit);
+    if (cursor is DocumentSnapshot) q = q.startAfterDocument(cursor);
+    final snap = await q.get();
+    final deals = snap.docs.map((d) => Deal.fromMap(d.id, d.data())).toList();
+    return DealPage(deals, snap.docs.isEmpty ? cursor : snap.docs.last, snap.docs.length == limit);
+  }
+
+  @override
+  Future<ProductHistory?> product(String key) async {
+    final doc = await _db.collection('products').doc(key).get();
+    return doc.exists ? ProductHistory.fromMap(key, doc.data()!) : null;
   }
 }
 
@@ -53,4 +79,15 @@ class FixtureDealRepository implements DealRepository {
     final end = (start + limit).clamp(0, all.length);
     return DealPage(all.sublist(start, end), end, end < all.length);
   }
+
+  @override
+  Future<DealPage> fetchBargains({Object? cursor, int limit = 40}) async {
+    final all = (await _load()).where((d) => d.insightKind != null).toList();
+    final start = cursor is int ? cursor : 0;
+    final end = (start + limit).clamp(0, all.length);
+    return DealPage(all.sublist(start, end), end, end < all.length);
+  }
+
+  @override
+  Future<ProductHistory?> product(String key) async => null;
 }

@@ -69,6 +69,19 @@ void main() {
     expect(d('clien', '19299082').thumbnail, isNull);
   });
 
+  test('price insight badges and the badged post of a group', () {
+    Deal d(String id, String? kind, {int? pct, String group = 'g'}) => Deal.fromMap(id, {
+          'source': 'ppomppu', 'groupKey': group, 'insightKind': kind, 'price': 9900, 'currency': 'KRW',
+          'insight': {'pct': pct, 'prevLowest': 11900, 'samples': 3, 'avg': 12500},
+        });
+    expect(d('a', 'lowest').insightBadge, '역대 최저가');
+    expect(d('a', 'below_avg', pct: 21).insightBadge, '평소보다 21%↓');
+    expect(d('a', null).insightBadge, isNull);
+    expect(d('a', 'lowest').insightDetail, contains('지난 딜 3건 중 가장 싸요'));
+    final g = DealGroup.fromDeals([d('ppomppu_1', null), d('arca_2', 'lowest')]).single;
+    expect(g.insightDeal.id, 'arca_2');
+  });
+
   test('hot score favours engagement and decays with age', () {
     final now = DateTime.now();
     final fresh = _deal('a_1', up: 5, age: const Duration(hours: 1));

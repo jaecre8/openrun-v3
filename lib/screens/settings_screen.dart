@@ -67,7 +67,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('핫딜 푸시 알림'),
                 subtitle: const Text('알림 조건에 맞는 딜이 올라오면 바로 알려드려요'),
                 value: s.pushEnabled,
-                onChanged: (v) => _repo.saveSettings(PushSettings(pushEnabled: v, quietStart: s.quietStart, quietEnd: s.quietEnd)),
+                onChanged: (v) => _repo.saveSettings(s.copyWith(pushEnabled: v)),
+              ),
+              SwitchListTile(
+                tileColor: Colors.white,
+                title: const Text('지금 뜨는 딜 알림'),
+                subtitle: const Text('추천·댓글이 빠르게 느는 딜을 하루 몇 번 알려드려요'),
+                value: s.hotPush,
+                onChanged: s.pushEnabled ? (v) => _repo.saveSettings(s.copyWith(hotPush: v)) : null,
               ),
               SwitchListTile(
                 tileColor: Colors.white,
@@ -76,8 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? '${_hourLabel(s.quietStart!)} ~ ${_hourLabel(s.quietEnd!)}에는 소리 없이 기록만 해요'
                     : '꺼짐'),
                 value: s.quietEnabled,
-                onChanged: (v) => _repo.saveSettings(
-                    PushSettings(pushEnabled: s.pushEnabled, quietStart: v ? 23 : null, quietEnd: v ? 7 : null)),
+                onChanged: (v) => _repo.saveSettings(s.copyWith(quietStart: () => v ? 23 : null, quietEnd: () => v ? 7 : null)),
               ),
               if (s.quietEnabled) ...[
                 ListTile(
@@ -86,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Text(_hourLabel(s.quietStart!)),
                   onTap: () async {
                     final h = await _pickHour(s.quietStart!);
-                    if (h != null) _repo.saveSettings(PushSettings(pushEnabled: s.pushEnabled, quietStart: h, quietEnd: s.quietEnd));
+                    if (h != null) _repo.saveSettings(s.copyWith(quietStart: () => h));
                   },
                 ),
                 ListTile(
@@ -95,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Text(_hourLabel(s.quietEnd!)),
                   onTap: () async {
                     final h = await _pickHour(s.quietEnd!);
-                    if (h != null) _repo.saveSettings(PushSettings(pushEnabled: s.pushEnabled, quietStart: s.quietStart, quietEnd: h));
+                    if (h != null) _repo.saveSettings(s.copyWith(quietEnd: () => h));
                   },
                 ),
               ],
@@ -120,7 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: Text(AppServices.instance.mode == DataMode.firebase ? '실시간 서버' : '샘플 데이터 (개발용)',
                     style: const TextStyle(color: AppColors.sub)),
               ),
-              const ListTile(tileColor: Colors.white, title: Text('버전'), trailing: Text('3.0.0', style: TextStyle(color: AppColors.sub))),
+              const ListTile(tileColor: Colors.white, title: Text('버전'), trailing: Text('3.1.0', style: TextStyle(color: AppColors.sub))),
             ],
           );
         },

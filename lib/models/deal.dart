@@ -48,6 +48,14 @@ class Deal {
   final int views;
   final bool isEnded;
   final String groupKey;
+  final String postId;
+  /// Same product across deals; null when the post is not one product.
+  final String? productKey;
+  /// 'lowest' (역대 최저가) or 'below_avg' (평소보다 저렴), from the product's earlier deals.
+  final String? insightKind;
+  final int? insightPct;
+  final num? prevLowest;
+  final int insightSamples;
 
   const Deal({
     required this.id,
@@ -68,6 +76,12 @@ class Deal {
     required this.views,
     required this.isEnded,
     required this.groupKey,
+    this.postId = '',
+    this.productKey,
+    this.insightKind,
+    this.insightPct,
+    this.prevLowest,
+    this.insightSamples = 0,
   });
 
   factory Deal.fromMap(String id, Map<String, dynamic> m) {
@@ -95,6 +109,12 @@ class Deal {
       views: (m['views'] as num?)?.toInt() ?? 0,
       isEnded: m['isEnded'] == true,
       groupKey: m['groupKey'] as String? ?? id,
+      postId: m['postId']?.toString() ?? '',
+      productKey: m['productKey'] as String?,
+      insightKind: m['insightKind'] as String?,
+      insightPct: ((m['insight'] as Map?)?['pct'] as num?)?.toInt(),
+      prevLowest: (m['insight'] as Map?)?['prevLowest'] as num?,
+      insightSamples: ((m['insight'] as Map?)?['samples'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -110,6 +130,41 @@ class Deal {
   }
 
   String? get priceLabel => formatPrice(price, currency);
+
+  /// Short badge text for the price row, or null.
+  String? get insightBadge => switch (insightKind) {
+        'lowest' => '역대 최저가',
+        'below_avg' when (insightPct ?? 0) > 0 => '평소보다 $insightPct%↓',
+        _ => null,
+      };
+
+  /// A sentence for the detail screen explaining the badge.
+  String? get insightDetail {
+    if (insightSamples == 0 || prevLowest == null) return null;
+    final low = formatPrice(prevLowest, 'KRW');
+    return switch (insightKind) {
+      'lowest' => '오픈런에 모인 이 상품의 지난 딜 $insightSamples건 중 가장 싸요 (이전 최저 $low)',
+      'below_avg' => '지난 딜 $insightSamples건 평균보다 $insightPct% 저렴해요 (이전 최저 $low)',
+      _ => '지난 딜 $insightSamples건과 비교했어요 (이전 최저 $low)',
+    };
+  }
+
+  Map<String, dynamic> toFavorite() => {
+        'dealId': id,
+        'title': title,
+        'productName': productName,
+        'shop': shop,
+        'price': price,
+        'currency': currency,
+        'shippingFee': shippingFee,
+        'category': category.name,
+        'thumbnail': thumbnail,
+        'url': url,
+        'sourceName': sourceName,
+        'groupKey': groupKey,
+        'productKey': productKey,
+        'postedAt': postedAt.toUtc().toIso8601String(),
+      };
 
   String? get shippingLabel {
     final fee = shippingFee;
@@ -137,6 +192,10 @@ class DealGroup {
   int get comments => deals.fold(0, (n, d) => n + d.comments);
   DateTime get postedAt => deals.map((d) => d.postedAt).reduce((a, b) => a.isBefore(b) ? a : b);
   bool get isEnded => deals.every((d) => d.isEnded);
+
+  /// The post carrying a badge, if any of the group's posts has one.
+  Deal get insightDeal => deals.firstWhere((d) => d.insightKind == 'lowest',
+      orElse: () => deals.firstWhere((d) => d.insightKind != null, orElse: () => primary));
   List<String> get sourceNames => deals.map((d) => d.sourceName).toSet().toList();
 
   /// The representative post's image, or another board's image of the same deal

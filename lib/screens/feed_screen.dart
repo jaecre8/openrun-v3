@@ -5,6 +5,7 @@ import '../app_services.dart';
 import '../models/deal.dart';
 import '../theme.dart';
 import '../widgets/deal_card.dart';
+import 'deal_detail_screen.dart';
 
 enum FeedSort { latest, popular }
 
@@ -249,7 +250,22 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
+  /// 지금 뜨는 딜: same rule as the server's hot push; shown when at least three qualify.
+  List<DealGroup> _hotGroups() {
+    if (_sort != FeedSort.latest) return const [];
+    final now = DateTime.now();
+    final hot = DealGroup.fromDeals(_deals.where((d) => !d.isEnded && !_hiddenSources.contains(d.source)))
+        .where((g) =>
+            now.difference(g.postedAt) < const Duration(hours: 6) &&
+            g.upvotes + g.comments >= 8 &&
+            g.deals.map((d) => d.hotScore(now)).reduce((a, b) => a > b ? a : b) >= 3.5)
+        .toList()
+      ..sort((a, b) => b.hotScore(now).compareTo(a.hotScore(now)));
+    return hot.length >= 3 ? hot.take(10).toList() : const [];
+  }
+
   Widget _buildList(List<DealGroup> groups) {
+    final hot = _hotGroups();
     if (groups.isEmpty) {
       if (_loading) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
       return RefreshIndicator(
@@ -275,9 +291,11 @@ class _FeedScreenState extends State<FeedScreen> {
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        itemCount: groups.length + (_hasMore || _loading ? 1 : 0),
+        itemCount: groups.length + (_hasMore || _loading ? 1 : 0) + (hot.isEmpty ? 0 : 1),
         separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (context, i) {
+        itemBuilder: (context, index) {
+          if (hot.isNotEmpty && index == 0) return HotCarousel(groups: hot);
+          final i = hot.isEmpty ? index : index - 1;
           if (i == groups.length) {
             return const Padding(
               padding: EdgeInsets.all(16),
@@ -340,4 +358,82 @@ class _SortButton extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// 지금 뜨는 딜: deals whose upvotes and comments are climbing fast.
+class HotCarousel extends StatelessWidget {
+  final List<DealGroup> groups;
+  const HotCarousel({super.key, required this.groups});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 2, 4, 10),
+          child: Row(children: [
+            Icon(Icons.rocket_launch, color: AppColors.main, size: 18),
+            SizedBox(width: 6),
+            Text('지금 뜨는 딜', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            SizedBox(width: 6),
+            Text('추천·댓글이 빠르게 느는 중', style: TextStyle(fontSize: 12, color: AppColors.sub)),
+          ]),
+        ),
+        SizedBox(
+          height: 214,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: groups.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final g = groups[i];
+              final d = g.insightDeal;
+              return SizedBox(
+                width: 168,
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DealDetailScreen(group: g))),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(height: 104, child: DealThumb(deal: d, thumbnail: g.thumbnail, ended: false, radius: 10)),
+                          const SizedBox(height: 8),
+                          Text(d.productName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.3)),
+                          const Spacer(),
+                          Row(children: [
+                            if (d.priceLabel != null)
+                              Flexible(
+                                child: Text(d.priceLabel!,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.main)),
+                              ),
+                            const Spacer(),
+                            Text('🔥 ${g.upvotes + g.comments}', style: const TextStyle(fontSize: 11.5, color: AppColors.sub)),
+                          ]),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 8, 4, 0),
+          child: Text('새로 올라온 딜', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        ),
+      ],
+    );
+  }
 }

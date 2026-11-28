@@ -109,8 +109,10 @@ class PushSettings {
   final bool pushEnabled;
   final int? quietStart;
   final int? quietEnd;
+  /// "지금 뜨는 딜" pushes (opt-in).
+  final bool hotPush;
 
-  const PushSettings({this.pushEnabled = true, this.quietStart, this.quietEnd});
+  const PushSettings({this.pushEnabled = true, this.quietStart, this.quietEnd, this.hotPush = false});
 
   bool get quietEnabled => quietStart != null && quietEnd != null;
 
@@ -118,7 +120,33 @@ class PushSettings {
         pushEnabled: m?['pushEnabled'] != false,
         quietStart: (m?['quietStart'] as num?)?.toInt(),
         quietEnd: (m?['quietEnd'] as num?)?.toInt(),
+        hotPush: m?['hotPush'] == true,
       );
 
-  Map<String, dynamic> toMap() => {'pushEnabled': pushEnabled, 'quietStart': quietStart, 'quietEnd': quietEnd};
+  PushSettings copyWith({bool? pushEnabled, int? Function()? quietStart, int? Function()? quietEnd, bool? hotPush}) =>
+      PushSettings(
+        pushEnabled: pushEnabled ?? this.pushEnabled,
+        quietStart: quietStart != null ? quietStart() : this.quietStart,
+        quietEnd: quietEnd != null ? quietEnd() : this.quietEnd,
+        hotPush: hotPush ?? this.hotPush,
+      );
+
+  Map<String, dynamic> toMap() =>
+      {'pushEnabled': pushEnabled, 'quietStart': quietStart, 'quietEnd': quietEnd, 'hotPush': hotPush};
+}
+
+/// A product the user follows (users/{uid}/tracked/{key}).
+class TrackedProduct {
+  final String key;
+  final String name;
+  final int? targetPrice;
+  const TrackedProduct({required this.key, required this.name, this.targetPrice});
+
+  factory TrackedProduct.fromMap(Map<String, dynamic> m) => TrackedProduct(
+        key: m['key'] as String? ?? '',
+        name: m['name'] as String? ?? '',
+        targetPrice: (m['targetPrice'] as num?)?.toInt(),
+      );
+
+  Map<String, dynamic> toMap() => {'key': key, 'name': name, 'targetPrice': targetPrice};
 }

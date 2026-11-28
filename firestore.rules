@@ -26,7 +26,7 @@ service cloud.firestore {
     }
 
     function validFavorite(d) {
-      return d.keys().hasOnly(['dealId', 'title', 'productName', 'shop', 'price', 'currency', 'thumbnail', 'url',
+      return d.keys().hasOnly(['dealId', 'title', 'productName', 'shop', 'price', 'currency', 'shippingFee', 'category', 'thumbnail', 'url',
                                'sourceName', 'groupKey', 'productKey', 'postedAt', 'savedAt'])
         && d.dealId is string && d.url is string && d.url.size() <= 500
         && d.productName is string && d.productName.size() <= 300;

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'alerts_screen.dart';
+import 'bargains_screen.dart';
 import 'feed_screen.dart';
 import 'settings_screen.dart';
+import 'tracking_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -19,7 +21,7 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [FeedScreen(), AlertsScreen(), SettingsScreen()],
+        children: const [FeedScreen(), BargainsScreen(), TrackingScreen(), AlertsScreen(), SettingsScreen()],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
@@ -27,6 +29,8 @@ class _MainShellState extends State<MainShell> {
         height: 64,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.local_fire_department_outlined), selectedIcon: Icon(Icons.local_fire_department), label: '핫딜'),
+          NavigationDestination(icon: Icon(Icons.trending_down), selectedIcon: Icon(Icons.trending_down), label: '최저가'),
+          NavigationDestination(icon: Icon(Icons.bookmark_border), selectedIcon: Icon(Icons.bookmark), label: '내 추적'),
           NavigationDestination(icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: '알림'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '설정'),
         ],

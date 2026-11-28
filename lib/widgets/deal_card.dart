@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/deal.dart';
-import '../screens/web_view_screen.dart';
+import '../screens/deal_detail_screen.dart';
 import '../theme.dart';
 import '../utils/format.dart';
 
@@ -20,50 +20,9 @@ class DealCard extends StatelessWidget {
   final DealGroup group;
   const DealCard({super.key, required this.group});
 
-  void _open(BuildContext context) {
-    if (group.deals.length == 1) {
-      _openDeal(context, group.deals.first);
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('같은 딜이 여러 곳에 올라왔어요',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            ),
-            for (final d in group.deals)
-              ListTile(
-                title: Text(d.sourceName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text('추천 ${d.upvotes} · 댓글 ${d.comments} · ${timeAgo(d.postedAt)}'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openDeal(context, d);
-                },
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static void _openDeal(BuildContext context, Deal d) => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => WebViewScreen(url: d.url, title: d.sourceName)),
-      );
-
   @override
   Widget build(BuildContext context) {
-    final d = group.primary;
+    final d = group.insightDeal;
     final ended = group.isEnded;
     final sources = group.sourceNames;
     final sourceText = sources.length > 1 ? '${sources.first} 외 ${sources.length - 1}곳' : sources.first;
@@ -75,13 +34,13 @@ class DealCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _open(context),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DealDetailScreen(group: group))),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Thumb(deal: d, thumbnail: group.thumbnail, ended: ended),
+                SizedBox(width: 84, height: 84, child: DealThumb(deal: d, thumbnail: group.thumbnail, ended: ended)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -113,15 +72,16 @@ class DealCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           if (d.priceLabel != null)
                             Text(d.priceLabel!,
                                 style: const TextStyle(
                                     fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.main)),
-                          if (d.priceLabel != null && d.shippingLabel != null) const SizedBox(width: 6),
-                          if (d.shippingLabel != null)
+                          if (d.priceLabel != null) const SizedBox(width: 6),
+                          if (d.insightBadge != null)
+                            InsightBadge(text: d.insightBadge!, strong: d.insightKind == 'lowest')
+                          else if (d.shippingLabel != null)
                             Text(d.shippingLabel!, style: const TextStyle(fontSize: 12, color: AppColors.sub)),
                           const Spacer(),
                           if (group.upvotes > 0) _Stat(icon: Icons.thumb_up_alt_outlined, value: group.upvotes),
@@ -136,6 +96,29 @@ class DealCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "역대 최저가" (filled) or "평소보다 N%↓" (outlined).
+class InsightBadge extends StatelessWidget {
+  final String text;
+  final bool strong;
+  final bool grey;
+  const InsightBadge({super.key, required this.text, required this.strong, this.grey = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = grey ? AppColors.sub : AppColors.main;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: strong ? color : Colors.white,
+        border: Border.all(color: color, width: 1.2),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(text,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: strong ? Colors.white : color, height: 1.1)),
     );
   }
 }
@@ -175,11 +158,14 @@ const _fallbackColors = [
 Color shopColor(String shop) =>
     _shopColors[shop] ?? _fallbackColors[shop.codeUnits.fold<int>(0, (h, c) => (h * 31 + c) & 0x7fffffff) % _fallbackColors.length];
 
-class _Thumb extends StatelessWidget {
+/// The deal's photo, or a shop-coloured tile with the shop name when there is none.
+class DealThumb extends StatelessWidget {
   final Deal deal;
   final String? thumbnail;
   final bool ended;
-  const _Thumb({required this.deal, required this.thumbnail, required this.ended});
+  final double radius;
+  final bool large;
+  const DealThumb({super.key, required this.deal, required this.thumbnail, required this.ended, this.radius = 12, this.large = false});
 
   Widget _placeholder() {
     final shop = deal.shop;
@@ -187,7 +173,7 @@ class _Thumb extends StatelessWidget {
       return Container(
         color: AppColors.bg,
         alignment: Alignment.center,
-        child: Icon(_categoryIcons[deal.category], color: const Color(0xFFBDBDC2), size: 30),
+        child: Icon(_categoryIcons[deal.category], color: const Color(0xFFBDBDC2), size: large ? 56 : 30),
       );
     }
     return Container(
@@ -197,7 +183,7 @@ class _Thumb extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(_categoryIcons[deal.category], color: Colors.white70, size: 18),
+          Icon(_categoryIcons[deal.category], color: Colors.white70, size: large ? 34 : 18),
           const SizedBox(height: 4),
           Text(
             shop,
@@ -207,7 +193,7 @@ class _Thumb extends StatelessWidget {
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w800,
-              fontSize: shop.length <= 4 ? 15 : 12,
+              fontSize: large ? 26 : (shop.length <= 4 ? 15 : 12),
               height: 1.15,
             ),
           ),
@@ -220,10 +206,8 @@ class _Thumb extends StatelessWidget {
   Widget build(BuildContext context) {
     final placeholder = _placeholder();
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: 84,
-        height: 84,
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox.expand(
         child: Stack(
           fit: StackFit.expand,
           children: [
