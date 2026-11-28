@@ -29,3 +29,8 @@ firestore-debug.log
 ui-debug.log
 .runtimeconfig.json
 service-account*.json
+
+# Promo video build
+promo/node_modules/
+promo/out/
+promo/frames/
